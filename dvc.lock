@@ -1,0 +1,43 @@
+schema: '2.0'
+stages:
+  download_data:
+    cmd: python scripts/download_dataset.py
+    deps:
+    - path: scripts/download_dataset.py
+      hash: md5
+      md5: 92660d6e3c4aecf36c1d31f3f76951c1
+      size: 840
+    outs:
+    - path: data/raw
+      hash: md5
+      md5: ce63c93c01503b67b42ec88b9c401b9c.dir
+      size: 5579870377
+      nfiles: 27153
+  prepare_data:
+    cmd: python scripts/prepare_dataset.py
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: ce63c93c01503b67b42ec88b9c401b9c.dir
+      size: 5579870377
+      nfiles: 27153
+    - path: scripts/prepare_dataset.py
+      hash: md5
+      md5: 626e5ba305e090dd652479e7d58d369f
+      size: 2084
+    outs:
+    - path: data/test
+      hash: md5
+      md5: b7f728d39726040ae04f1b3eb0e0a78f.dir
+      size: 320199967
+      nfiles: 1880
+    - path: data/train
+      hash: md5
+      md5: 511fe6c48e52474d670f0778f7016cc8.dir
+      size: 1495771150
+      nfiles: 8750
+    - path: data/val
+      hash: md5
+      md5: 44abcae626c7a4d824f6436cd02769d1.dir
+      size: 314835043
+      nfiles: 1870
