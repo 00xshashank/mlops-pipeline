@@ -1,58 +1,105 @@
+import os
+import tempfile
+from typing import Tuple, List
+
+import numpy as np
+import tensorflow as tf
+import joblib
+
 from flask import Flask, request, jsonify
-from PIL import Image
-import torch
-import torchvision.transforms as transforms
-import io
-import random
+from flask_cors import CORS
+
+CNN_MODEL_PATH = "cnn_feature_extractor_model2.h5"
+ENSEMBLE_MODEL_PATH = "ensemble_model.pkl"
+IMAGE_SIZE: Tuple[int, int] = (224, 224)
+
+CLASS_NAMES: List[str] = [
+    "Eczema",
+    "Melanoma",
+    "Atopic Dermatitis",
+    "Basal Cell Carcinoma",
+    "Melanocytic Nevi",
+    "Benign Keratosis-like Lesions",
+    "Psoriasis",
+    "Seborrheic Keratoses",
+    "Tinea Ringworm",
+    "Warts Molluscum",
+]
+
+print("Loading CNN feature extractor...")
+cnn = tf.keras.models.load_model(CNN_MODEL_PATH)
+
+print("Loading ensemble model...")
+ensemble = joblib.load(ENSEMBLE_MODEL_PATH)
+
+
+# print("CNN output shape:", features.shape)
+print("Type: ", type(ensemble))
+print("Hasatttr: ", hasattr(ensemble, "predict_proba"))
+
+print("Models loaded successfully.")
 
 app = Flask(__name__)
+CORS(app)
 
-# -----------------------------
-# Image preprocessing pipeline
-# -----------------------------
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),              # Converts to [0,1] tensor
-])
+def predict_image(image_path: str) -> str:
+    # Load and preprocess image
+    img = tf.keras.preprocessing.image.load_img(
+        image_path, target_size=IMAGE_SIZE
+    )
+    img = tf.keras.preprocessing.image.img_to_array(img)
+    img = img / 255.0
+    img = np.expand_dims(img, axis=0)  # (1, H, W, C)
 
-# -----------------------------
-# Dummy detection function
-# Replace with real model later
-# -----------------------------
-def detect(image_tensor: torch.Tensor) -> int:
-    """
-    image_tensor: shape [1, 3, 224, 224]
-    returns class_id in range [1, 10]
-    """
-    # Example: random output (replace with model(image_tensor))
-    return random.randint(1, 10)
+    # CNN feature extraction
+    features = cnn.predict(img, verbose=0)
+    print("CNN output shape:", features.shape)
 
-# -----------------------------
-# API endpoint
-# -----------------------------
-@app.route("/detect", methods=["POST"])
-def detect_endpoint():
-    if "image" not in request.files:
-        return jsonify({"error": "No image provided"}), 400
 
-    file = request.files["image"]
+    # Ensemble prediction
+    print("Ensemble expects:", ensemble.n_features_in_)
+    pred_idx = int(ensemble.predict(features)[0])
+    print("Pred_idx is: ", pred_idx)
 
-    # Read image
-    image_bytes = file.read()
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    return CLASS_NAMES[pred_idx]
 
-    # Convert to tensor
-    image_tensor = transform(image).unsqueeze(0)  # [1, 3, 224, 224]
 
-    # Run detection
-    class_id = detect(image_tensor)
+# ----------------------------
+# Routes
+# ----------------------------
+@app.route("/predict", methods=["POST"])
+def predict():
+    if "file" not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files["file"]
+    print("file received: ", file)
+
+    if file.filename == "":
+        return jsonify({"error": "Empty filename"}), 400
+    print("File name is: ", file.filename)
+
+    # Save file temporarily
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+        file.save(tmp.name)
+        tmp_path = tmp.name
+
+    try:
+        predicted_class = predict_image(tmp_path)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        os.remove(tmp_path)
 
     return jsonify({
-        "class_id": int(class_id)
+        "prediction": predicted_class
     })
 
-# -----------------------------
-# Run server
-# -----------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=False,
+        use_reloader=False
+    )
+
